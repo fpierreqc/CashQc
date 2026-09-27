@@ -42,7 +42,12 @@ contenu du portefeuille.**
 ## Risques qui restent avec CashQc
 
 1. **La clé du portefeuille est accessible à l'agent.** Il pourrait signer une transaction USDC vers n'importe quelle adresse avec un script `node`, sans passer par un seul outil surveillé. → Ne mets jamais plus que ce que tu acceptes de perdre.
-2. **Le réseau n'est pas filtré.** L'agent peut joindre n'importe quel hôte. Pour aller plus loin, mets un proxy sortant avec une liste blanche (api.conway.tech, inference.conway.tech, ton RPC Base).
+2. **Le réseau est filtré, mais les domaines permis restent puissants.** L'agent ne
+   peut joindre que `api.conway.tech`, `inference.conway.tech` et `mainnet.base.org`
+   (voir `proxy/`). Mais avec la clé du portefeuille, il peut quand même signer une
+   transaction USDC et la soumettre au RPC Base, qui est permis. Le proxy empêche
+   l'exfiltration de la clé vers un site tiers et le téléchargement de code, **pas**
+   une dépense sur la chaîne.
 3. **Les correctifs se trouvent dans le code que l'agent exécute.** Il ne peut pas les modifier dans l'image, mais un processus lancé par `exec` pourrait réimplémenter un outil retiré en appelant directement l'API Conway avec la clé API, qu'il peut lire.
 4. **Les enfants déjà créés** (si tu as roulé automaton sans CashQc) ne sont pas touchés.
 

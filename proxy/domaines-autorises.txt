@@ -1,0 +1,21 @@
+# Domaines que l'agent a le droit de joindre (un par ligne).
+# Un point au début (.exemple.com) autorise aussi tous les sous-domaines.
+# Après modification : docker compose up -d --build proxy
+
+# API Conway : crédits, sandbox, recharge
+api.conway.tech
+# Inférence Conway
+inference.conway.tech
+
+# RPC Base (solde USDC, transactions). Si tu changes AUTOMATON_RPC_URL,
+# remplace ce domaine par celui de ton fournisseur.
+mainnet.base.org
+
+# Décommente seulement si tu mets la clé correspondante dans .env
+# api.openai.com
+# api.anthropic.com
+
+# Volontairement ABSENTS :
+#   social.conway.tech  (messages entrants non authentifiés)
+#   github.com          (l'agent ne doit pas tirer de nouveau code)
+#   pay.conway.tech     (paiements x402 désactivés)

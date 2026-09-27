@@ -12,7 +12,8 @@ CashQc ne recopie pas le code d'automaton. Il :
 3. le fait rouler dans un **conteneur Docker isolé**, sous un utilisateur sans
    privilèges, avec le code en lecture seule ;
 4. **réimpose** une configuration prudente (`config/durcissement.json`) à chaque
-   démarrage.
+   démarrage ;
+5. filtre **tout le trafic sortant** avec un proxy à liste blanche (`proxy/`).
 
 > ⚠️ **Lis [SECURITE.md](SECURITE.md) avant de mettre un seul dollar dans le
 > portefeuille.** Même durci, l'agent peut lire sa propre clé privée avec son
@@ -61,9 +62,34 @@ sans ce fichier, les fonds sont perdus.
 | Achat de crédits (`topup_credits`) | jusqu'à 2 500 $ par appel | plafond de 5 $ par appel (`AUTOMATON_MAX_TOPUP_USD`) |
 | Exécution | shell sur l'hôte (root avec l'installateur `curl \| sh`) | conteneur non root, `cap_drop: ALL`, limites CPU, mémoire et processus |
 | Configuration modifiée par l'agent | persiste | écrasée à chaque démarrage |
+| Accès réseau | Internet au complet | seulement les domaines de `proxy/domaines-autorises.txt`, en HTTPS |
 
 Pour changer une limite : modifie `.env` ou `config/durcissement.json`, puis relance
 (`docker compose build` si tu as touché à `config/`).
+
+## Proxy de sortie
+
+L'agent est branché sur un réseau Docker **interne, sans route vers Internet**. Sa seule
+sortie est le conteneur `proxy` (Squid), qui accepte seulement :
+
+- les tunnels HTTPS (port 443),
+- vers les domaines listés dans `proxy/domaines-autorises.txt` : par défaut
+  `api.conway.tech`, `inference.conway.tech` et `mainnet.base.org`.
+
+Tout le reste est refusé, y compris GitHub, le relais social et le HTTP en clair.
+Un programme qui ignorerait le proxy ne peut pas contourner le filtre : il n'a tout
+simplement pas de réseau.
+
+```bash
+docker compose logs -f proxy     # chaque tentative : TCP_TUNNEL (permis) ou TCP_DENIED (refusé)
+```
+
+Pour ajouter un domaine (par exemple `api.openai.com` si tu fournis une clé OpenAI) :
+modifie `proxy/domaines-autorises.txt`, puis `docker compose up -d --build proxy`.
+Si tu changes `AUTOMATON_RPC_URL`, ajoute aussi le domaine de ce RPC.
+
+> Un Ollama local (`http://localhost:11434`) n'est pas joignable depuis le réseau
+> interne. C'est voulu.
 
 ## Mettre à jour automaton
 
@@ -81,6 +107,7 @@ config/durcissement.json      configuration imposée à chaque démarrage
 config/genesis-prompt.exemple.md
 scripts/entrypoint.sh         point d'entrée du conteneur
 scripts/durcir-config.mjs     fusion de la configuration durcie
+proxy/                        proxy de sortie Squid et liste blanche de domaines
 Dockerfile, docker-compose.yml
 SECURITE.md                   audit et risques résiduels
 ```

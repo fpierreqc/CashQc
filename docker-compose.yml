@@ -3,6 +3,18 @@ services:
     build: .
     image: cashqc-automaton
     env_file: .env
+    environment:
+      # Tout le trafic sortant passe par le proxy à liste blanche.
+      # NODE_USE_ENV_PROXY : fetch() de Node (>= 22.21) respecte HTTPS_PROXY.
+      NODE_USE_ENV_PROXY: "1"
+      HTTPS_PROXY: http://proxy:3128
+      HTTP_PROXY: http://proxy:3128
+      https_proxy: http://proxy:3128
+      http_proxy: http://proxy:3128
+      NO_PROXY: ""
+      no_proxy: ""
+    networks: [interne]
+    depends_on: [proxy]
     stdin_open: true   # l'assistant de configuration est interactif
     tty: true
     volumes:
@@ -20,6 +32,32 @@ services:
     cpus: 1.0
     pids_limit: 256
     restart: "no"      # s'il plante, un humain regarde avant de relancer
+
+  proxy:
+    build: ./proxy
+    image: cashqc-proxy
+    # Seul service branché sur les deux réseaux : c'est l'unique sortie.
+    networks: [interne, sortie]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/spool/squid
+      - /var/cache/squid
+      - /var/log/squid
+      - /run
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 64
+    restart: unless-stopped
+
+networks:
+  # internal: true => aucune route vers Internet. Même un programme qui
+  # ignore HTTPS_PROXY ne peut pas sortir : il échoue.
+  interne:
+    internal: true
+  sortie: {}
 
 volumes:
   travail:

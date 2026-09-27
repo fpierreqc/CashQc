@@ -1,5 +1,5 @@
 # CashQc — image isolée pour faire rouler un automaton durci.
-FROM node:22-bookworm-slim AS build
+FROM node:22.22-bookworm-slim AS build
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates python3 make g++ \
@@ -21,7 +21,8 @@ RUN COMMIT="$(cat /tmp/AUTOMATON_COMMIT)" \
  && pnpm run build \
  && rm -rf .git
 
-FROM node:22-bookworm-slim
+# Node >= 22.21 requis pour NODE_USE_ENV_PROXY (passage par le proxy).
+FROM node:22.22-bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates curl \
