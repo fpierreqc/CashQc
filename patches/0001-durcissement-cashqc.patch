@@ -1,0 +1,121 @@
+diff --git a/src/__tests__/loop.test.ts b/src/__tests__/loop.test.ts
+index 34ffb54..4f959e1 100644
+--- a/src/__tests__/loop.test.ts
++++ b/src/__tests__/loop.test.ts
+@@ -191,7 +191,8 @@ describe("Agent Loop", () => {
+       (t) => t.input?.includes("Hello from another agent!"),
+     );
+     expect(inboxTurn).toBeDefined();
+-    expect(inboxTurn!.inputSource).toBe("agent");
++    // CashQc: unauthenticated social messages are external input.
++    expect(inboxTurn!.inputSource).toBe("social");
+   });
+ 
+   it("MAX_TOOL_CALLS_PER_TURN limits tool calls", async () => {
+diff --git a/src/__tests__/replication.test.ts b/src/__tests__/replication.test.ts
+index 66dbcb8..35e99f9 100644
+--- a/src/__tests__/replication.test.ts
++++ b/src/__tests__/replication.test.ts
+@@ -125,6 +125,15 @@ describe("spawnChild", () => {
+     expect(child.status).toBe("spawning");
+   });
+ 
++  it("honors an explicit maxChildren limit of 0", async () => {
++    const createSpy = vi.spyOn(conway, "createSandbox");
++
++    await expect(
++      spawnChild(conway, identity, db, genesis, undefined, 0),
++    ).rejects.toThrow("already at max children (0)");
++    expect(createSpy).not.toHaveBeenCalled();
++  });
++
+   it("throws on zero address from init", async () => {
+     vi.spyOn(conway, "exec").mockImplementation(async (command: string) => {
+       if (command.includes("--init")) {
+diff --git a/src/agent/loop.ts b/src/agent/loop.ts
+index aad1427..d57a307 100644
+--- a/src/agent/loop.ts
++++ b/src/agent/loop.ts
+@@ -98,7 +98,16 @@ export async function runAgentLoop(
+ 
+   const builtinTools = createBuiltinTools(identity.sandboxId);
+   const installedTools = loadInstalledTools(db);
+-  const tools = [...builtinTools, ...installedTools];
++  // CashQc: operator-disabled tools (comma-separated names).
++  const disabledTools = new Set(
++    (process.env.AUTOMATON_DISABLED_TOOLS || "")
++      .split(",")
++      .map((t) => t.trim())
++      .filter(Boolean),
++  );
++  const tools = [...builtinTools, ...installedTools].filter(
++    (t) => !disabledTools.has(t.name),
++  );
+   const toolContext: ToolContext = {
+     identity,
+     config,
+@@ -421,7 +430,9 @@ export async function runAgentLoop(
+               return `[Message from ${from.content}]: ${content.content}`;
+             })
+             .join("\n\n");
+-          pendingInput = { content: formatted, source: "agent" };
++          // CashQc: inbound social messages are unauthenticated, so treat
++          // them as external input (restricts spawn/fund/self-mod tools).
++          pendingInput = { content: formatted, source: "social" };
+         }
+       }
+ 
+diff --git a/src/agent/tools.ts b/src/agent/tools.ts
+index 0d2db86..557bbd4 100644
+--- a/src/agent/tools.ts
++++ b/src/agent/tools.ts
+@@ -305,6 +305,12 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
+           return `Invalid tier. Valid amounts (USD): ${TOPUP_TIERS.join(", ")}`;
+         }
+ 
++        // CashQc: operator-set ceiling on a single credit purchase.
++        const maxTopupUsd = Number(process.env.AUTOMATON_MAX_TOPUP_USD);
++        if (Number.isFinite(maxTopupUsd) && amountUsd > maxTopupUsd) {
++          return `Topup refused: $${amountUsd} exceeds the operator limit of $${maxTopupUsd}.`;
++        }
++
+         // Check USDC balance first (EVM-only path after Solana guard above)
+         const { getUsdcBalance } = await import("../conway/x402.js");
+         const usdcBalance = await getUsdcBalance(ctx.identity.address, "eip155:8453");
+@@ -1648,6 +1654,7 @@ Model: ${ctx.inference.getDefaultModel()}
+             ctx.db,
+             genesis,
+             lifecycle,
++            ctx.config.maxChildren,
+           );
+         } catch (err: any) {
+           // Auto-topup on 402 insufficient credits and retry once
+@@ -1681,6 +1688,7 @@ Model: ${ctx.inference.getDefaultModel()}
+                   ctx.db,
+                   retryGenesis,
+                   retryLifecycle,
++                  ctx.config.maxChildren,
+                 );
+               }
+             }
+diff --git a/src/replication/spawn.ts b/src/replication/spawn.ts
+index 7776f63..7b7f0f0 100644
+--- a/src/replication/spawn.ts
++++ b/src/replication/spawn.ts
+@@ -58,6 +58,7 @@ export async function spawnChild(
+   db: AutomatonDatabase,
+   genesis: GenesisConfig,
+   lifecycle?: ChildLifecycle,
++  maxChildrenLimit?: number,
+ ): Promise<ChildAutomaton> {
+   // Check child limit from config
+   const existing = db
+@@ -68,7 +69,7 @@ export async function spawnChild(
+         c.status !== "cleaned_up" &&
+         c.status !== "failed",
+     );
+-  const maxChildren = (db as any).config?.maxChildren ?? 3;
++  const maxChildren = maxChildrenLimit ?? (db as any).config?.maxChildren ?? 3;
+   if (existing.length >= maxChildren) {
+     throw new Error(
+       `Cannot spawn: already at max children (${maxChildren}). Kill or wait for existing children to die.`,

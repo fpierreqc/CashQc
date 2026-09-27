@@ -1,0 +1,25 @@
+services:
+  automaton:
+    build: .
+    image: cashqc-automaton
+    env_file: .env
+    stdin_open: true   # l'assistant de configuration est interactif
+    tty: true
+    volumes:
+      - ./data:/root/.automaton
+      - travail:/root/travail   # espace de travail persistant de l'agent
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /root/.cache
+      - /root/.npm
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    restart: "no"      # s'il plante, un humain regarde avant de relancer
+
+volumes:
+  travail:

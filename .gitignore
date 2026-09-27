@@ -1,0 +1,11 @@
+# Secrets et état de l'agent — ne JAMAIS committer
+.env
+data/
+*.key
+wallet.json
+automaton.json
+api-key
+
+# Build local
+vendor/
+node_modules/
